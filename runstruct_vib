@@ -1,0 +1,62 @@
+#!/bin/csh
+
+set wrap="lammps.wrap"
+set strfile="str_hint.out"
+if ( ! -e $strfile ) then
+  set strfile="str.out"
+endif
+
+echo 'start calc '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+
+#Transform POSCAR to LAMMPS in-file
+python3 ../atat_wrap/POSCAR_lmp.py
+#if ( ! -e ener.dat ) then
+#  echo 'end badstr '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+#  echo 'bad structure' >! error
+#  exit 1
+#endif
+echo 'Masses' >> ener.dat
+echo ' ' >> ener.dat
+echo '1    70' >> ener.dat
+echo '2    14' >> ener.dat
+echo '3    16' >> ener.dat
+echo '4    65' >> ener.dat
+
+#Structure optimization
+lmp_mpi -in ../atat_wrap/in.lammps_minimize
+
+#Check optimizaton result
+set finE=`grep "Energy initial" log.lammps -A1 | tail -n 1 | awk '{print $3}'`
+echo 'final_energy '$finE'' >! finalEner.out
+if ((`grep -o 'e+' finalEner.out | wc -l` >= 1)) then
+  echo 'end lammps '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+  echo 'minimize failed' >! error
+  exit 1 
+else if ((`echo ''$finE' > 2000' | bc` == 1) || (`echo ''$finE' < (-2000)' | bc` == 1)) then
+  echo 'end lammps '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+  echo 'minimize failed' >! error
+  exit 1
+endif
+
+#Calculate vibrational free energy at T
+phonolammps ../atat_wrap/in.lammps_data --dim 1 1 1
+phonopy -c POSCAR ../atat_wrap/mesh.conf
+set T=$argv
+set f=`python ../atat_wrap/read_thermal_properties.py $T`
+set eEeV=`cat DFTener | awk '{print $1}'`
+###Set eEeV=`cat finalEner.out | awk '{print $2}'`
+set eE=`echo ''$eEeV' * 96.48534' | bc`
+
+#Calculate total free energy in kJ/mol
+set totE=`echo ''$f' + '$eE'' | bc`
+echo $totE >! enertot
+
+#Check and write energy file
+set l=`wc -c enertot | awk '{print $1}'`
+if ( $l != '1' ) then
+  echo 'end normal '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+  mv enertot energy
+else
+  echo 'end unknwn '`pwd | awk -F '/' '{print $9,"/",$10}'`' '`date +'%Y%m%d %T %z'`'' >> record.atat
+  mv enertot error 
+endif
