@@ -15,12 +15,11 @@ python3 ../atat_wrap/POSCAR_lmp.py
 #  echo 'bad structure' >! error
 #  exit 1
 #endif
+
+#Echo Atom masses to LAMMPS in-file
 echo 'Masses' >> ener.dat
 echo ' ' >> ener.dat
-echo '1    70' >> ener.dat
-echo '2    14' >> ener.dat
-echo '3    16' >> ener.dat
-echo '4    65' >> ener.dat
+echo '1    14' >> ener.dat
 
 #Structure optimization
 lmp_mpi -in ../atat_wrap/in.lammps_minimize
